@@ -30,20 +30,26 @@ A modular, arcade-style light-gun shooter game built from scratch using vanilla 
 
 ---
 
+Here is the controls section formatted cleanly as a text-based list:
+
+---
+
 ## 🕹️ Controls
 
-| Action | Desktop Control | Mobile / Touch Control |
-| --- | --- | --- |
-| **Aim & Shoot** | Mouse Click
+* **Aim & Shoot:**
+* **Desktop:** Mouse Click
 
- | Screen Tap
 
- |
-| **Reload** | `SPACE` or `R` key
+* **Mobile / Touch:** Screen Tap
 
- | Dedicated **RELOAD** button
 
- |
+
+
+* **Reload:**
+* **Desktop:** Press the **`SPACE`** or **`R`** key
+
+
+* **Mobile / Touch:** Tap the dedicated **RELOAD** button
 
 ---
 
