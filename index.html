@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Cyber Blaster</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="game-container">
+    <!-- Main Menu Screen -->
+    <div id="main-menu-screen" class="overlay-screen">
+      <div class="menu-box">
+        <h1 class="game-title">CYBER BLASTER</h1>
+        <div class="menu-buttons">
+          <button id="btn-play" class="menu-btn">PLAY</button>
+          <button id="btn-instruction" class="menu-btn">INSTRUCTION</button>
+          <button id="btn-leaderboard" class="menu-btn">LEADERBOARD</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Instruction Screen Overlay -->
+    <div id="instruction-screen" class="overlay-screen hidden">
+      <div class="menu-box modal-box manual-box">
+        <header class="manual-header">
+          <h2>ARCADE MANUAL</h2>
+          <p class="manual-intro">
+            Light-gun arcade shooter: Eliminate hostiles, protect Hostages, manage ammo &amp; threat timers, survive waves, and chase the highest score!
+          </p>
+        </header>
+
+        <div class="manual-grid">
+          <!-- Controls & Objective -->
+          <section class="manual-section">
+            <h3 class="manual-section-title">CONTROLS &amp; OBJECTIVE</h3>
+            <div class="manual-block">
+              <div class="manual-row"><span class="badge">SHOOT</span> <span>Click / Tap on targets</span></div>
+              <div class="manual-row"><span class="badge">RELOAD</span> <span>Press <strong>SPACE / R</strong> or tap <strong>RELOAD</strong> button</span></div>
+              <div class="manual-row highlight-row"><span>Clear all hostiles before the threat timer expires to advance waves!</span></div>
+            </div>
+          </section>
+
+          <!-- Enemy Showcase -->
+          <section class="manual-section">
+            <h3 class="manual-section-title">TARGET SHOWCASE</h3>
+            <div class="manual-block enemy-list">
+              <div class="manual-item">
+                <span class="enemy-icon std-enemy"></span>
+                <div class="item-desc">
+                  <strong>EXPOSED / COVER / STATIONARY</strong> (1 Shot • 100 PTS)<br/>
+                  <span>Standard hostile targets appearing in static, moving, or cover pop-up patterns.</span>
+                </div>
+              </div>
+              <div class="manual-item">
+                <div class="armored-swatches">
+                  <span class="enemy-icon arm-yellow"></span>
+                  <span class="enemy-icon arm-green"></span>
+                  <span class="enemy-icon arm-blue"></span>
+                  <span class="enemy-icon arm-violet"></span>
+                </div>
+                <div class="item-desc">
+                  <strong>ARMORED ENEMIES</strong> (Multi-Shot • Toughness PTS)<br/>
+                  <span>Toughness: <span class="txt-yellow">Yellow (2)</span>, <span class="txt-green">Green (3)</span>, <span class="txt-blue">Blue (4)</span>, <span class="txt-violet">Violet (5)</span>. Points awarded only on full elimination (Base 100 × Toughness).</span>
+                </div>
+              </div>
+              <div class="manual-item hostage-item">
+                <span class="enemy-icon hostage-icon"></span>
+                <div class="item-desc">
+                  <strong class="txt-red">HOSTAGE</strong> (-1 Life • -250 PTS)<br/>
+                  <span>DO NOT SHOOT! Shooting a hostage causes life loss and immediate wave reset.</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Perk Showcase -->
+          <section class="manual-section">
+            <h3 class="manual-section-title">PERK SHOWCASE</h3>
+            <div class="manual-block perk-grid">
+              <div class="manual-item">
+                <span class="perk-icon p-life">♥</span>
+                <div class="item-desc"><strong>EXTRA LIFE</strong> (+1 Life, max 5)</div>
+              </div>
+              <div class="manual-item">
+                <span class="perk-icon p-timer">⏱</span>
+                <div class="item-desc"><strong>TIMER+</strong> (+5.0s to +10.0s Time)</div>
+              </div>
+              <div class="manual-item">
+                <span class="perk-icon p-mg">⚡</span>
+                <div class="item-desc"><strong>MACHINE GUN</strong> (30 Rapid Rounds)</div>
+              </div>
+              <div class="manual-item">
+                <span class="perk-icon p-mult">2X</span>
+                <div class="item-desc"><strong>2X MULTIPLIER</strong> (10s Double Score/Combo)</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Scoring & Combo System -->
+          <section class="manual-section">
+            <h3 class="manual-section-title">SCORING &amp; COMBO METER</h3>
+            <div class="manual-block compact-text">
+              <p>• <strong>SCORING:</strong> Base Points × Combo Multiplier (Round(Combo^1.5)). Hostage hit = -250 PTS.</p>
+              <p>• <strong>COMBO BUILDING:</strong> Eliminations increase combo up to x5 (x10 with 2x Multiplier).</p>
+              <p>• <strong>ARMORED HITS:</strong> Damaging Armored Enemies refreshes combo timer without increasing combo level. Elimination increases combo level.</p>
+              <p>• <strong>COMBO BREAK:</strong> Missed shots or hostage hits reset combo to 0.</p>
+            </div>
+          </section>
+        </div>
+
+        <button id="btn-instruction-back" class="menu-btn">BACK</button>
+      </div>
+    </div>
+
+    <!-- Leaderboard Screen Overlay -->
+    <div id="leaderboard-screen" class="overlay-screen hidden">
+      <div class="menu-box modal-box">
+        <h2>TOP 10 LEADERBOARD</h2>
+        <div class="leaderboard-table-wrapper">
+          <table id="leaderboard-table">
+            <thead>
+              <tr>
+                <th>RANK</th>
+                <th>NAME</th>
+                <th>SCORE</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-tbody">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+        <button id="btn-leaderboard-back" class="menu-btn">BACK</button>
+      </div>
+    </div>
+
+    <!-- Arcade 3-Letter Name Entry Screen -->
+    <div id="name-entry-screen" class="overlay-screen hidden">
+      <div class="menu-box modal-box arcade-box">
+        <h2 class="arcade-title">NEW HIGH SCORE!</h2>
+        <p class="arcade-subtitle">ENTER YOUR INITIALS</p>
+        <div class="arcade-input-container">
+          <input type="text" id="arcade-name-input" maxlength="3" autocomplete="off" spellcheck="false" placeholder="AAA" />
+        </div>
+        <button id="btn-submit-name" class="menu-btn" disabled>CONFIRM</button>
+      </div>
+    </div>
+
+    <!-- Game Over Screen Pop-Up Modal -->
+    <div id="game-over-screen" class="overlay-screen hidden">
+      <div class="menu-box modal-box pop-in">
+        <h1 class="game-over-header">GAME OVER</h1>
+        <div class="game-over-stats">
+          <div class="stat-row"><span class="stat-label">YOUR SCORE:</span><span id="go-score-val" class="stat-val">0</span></div>
+          <div class="stat-row"><span class="stat-label">HIGH SCORE:</span><span id="go-highscore-val" class="stat-val">0</span></div>
+          <div id="go-rank-container" class="stat-row hidden"><span class="stat-label">LEADERBOARD RANK:</span><span id="go-rank-val" class="stat-val">#1</span></div>
+        </div>
+        <div class="menu-buttons">
+          <button id="btn-play-again" class="menu-btn">PLAY AGAIN</button>
+          <button id="btn-go-main-menu" class="menu-btn">MAIN MENU</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gameplay HUD Containers -->
+    <div id="reload-prompt" class="hidden">RELOAD</div>
+    <header id="hud" class="hidden">
+      <div class="hud-item hud-left"><span class="hud-label">SCORE</span><span id="score-val" class="hud-value">0</span></div>
+      <div class="hud-item hud-center"><span class="hud-label">TIME</span><span id="time-val" class="hud-value">30</span></div>
+      <div class="hud-item hud-right">
+        <div class="hud-subgroup">
+          <span class="hud-label">ROUND</span><span id="round-val" class="hud-value">1</span>
+        </div>
+        <div class="hud-subgroup">
+          <span class="hud-label">WAVE</span><span id="wave-val" class="hud-value">1/3</span>
+        </div>
+      </div>
+    </header>
+
+    <div id="bottom-hud" class="hidden">
+      <div class="hud-item hud-lives"><span class="hud-label">LIVES</span><span id="lives-val" class="hud-value hud-icons"></span></div>
+      <div id="combo-hud" class="hud-item hud-combo">
+        <span class="hud-label">COMBO</span>
+        <span id="combo-val" class="hud-value">x0</span>
+        <div id="combo-bar"><div id="combo-bar-fill"></div></div>
+      </div>
+      <div class="hud-item hud-ammo"><span class="hud-label">AMMO</span><span id="ammo-val" class="hud-value hud-icons"></span></div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <button id="touch-reload-btn" aria-label="Reload Weapon">RELOAD</button>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
