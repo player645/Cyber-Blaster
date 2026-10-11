@@ -760,17 +760,15 @@ body, html {
   font-weight: bold;
   font-size: 0.9rem;
   z-index: 10;
-  display: flex;
+  display: none;
   justify-content: center;
   align-items: center;
 }
 
-#touch-reload-btn:active {
-  background-color: rgba(0, 255, 204, 0.5);
+#touch-reload-btn.visible {
+  display: flex;
 }
 
-@media (min-width: 768px) {
-  #touch-reload-btn {
-    display: none;
-  }
+#touch-reload-btn:active {
+  background-color: rgba(0, 255, 204, 0.5);
 }
