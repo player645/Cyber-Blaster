@@ -264,10 +264,10 @@ class LightGunGame {
   }
 
   isMobileTouchDevice() {
-    const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    const isCoarse = window.matchMedia('(pointer: coarse)').matches;
-    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    return isMobileUA || (isTouch && isCoarse);
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
+    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent);
+    const isSmallScreen = window.innerWidth <= 1024 || window.innerHeight <= 768;
+    return isMobileUA || (isTouch && isSmallScreen);
   }
 
   checkOrientationGate() {
@@ -405,7 +405,7 @@ class LightGunGame {
 
   setupUIEvents() {
     document.getElementById('btn-play').addEventListener('click', () => {
-      if (this.isMobileTouchDevice() && this.checkOrientationGate()) return;
+      if (this.checkOrientationGate()) return;
       this.startNewGame();
     });
     document.getElementById('btn-instruction').addEventListener('click', () => {
@@ -442,7 +442,7 @@ class LightGunGame {
     });
 
     document.getElementById('btn-play-again').addEventListener('click', () => {
-      if (this.isMobileTouchDevice() && this.checkOrientationGate()) return;
+      if (this.checkOrientationGate()) return;
       this.gameOverScreen.classList.add('hidden');
       this.startNewGame();
     });
@@ -479,7 +479,7 @@ class LightGunGame {
   }
 
   startNewGame() {
-    if (this.isMobileTouchDevice() && this.checkOrientationGate()) {
+    if (this.checkOrientationGate()) {
       return;
     }
 
@@ -498,13 +498,28 @@ class LightGunGame {
 
   init() {
     this.resizeCanvas();
+    this.checkOrientationGate();
+
     window.addEventListener('resize', () => {
       this.resizeCanvas();
       this.checkOrientationGate();
     });
 
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => {
+        this.resizeCanvas();
+        this.checkOrientationGate();
+      }, 150);
+    });
+
+    if (window.matchMedia) {
+      window.matchMedia('(orientation: portrait)').addEventListener('change', () => {
+        this.checkOrientationGate();
+      });
+    }
+
     this.canvas.addEventListener('pointerdown', (e) => {
-      if (this.isMobileTouchDevice() && this.checkOrientationGate()) return;
+      if (this.checkOrientationGate()) return;
       this.mgShotFired = false;
       this.isPointerDown = true;
       this.updateCrosshair(e);
@@ -527,7 +542,7 @@ class LightGunGame {
     });
 
     window.addEventListener('keydown', (e) => {
-      if (this.gameMode === 'PLAYING') {
+      if (this.gameMode === 'PLAYING' && !this.checkOrientationGate()) {
         if (e.code === 'Space' || e.code === 'KeyR' || e.key === 'r' || e.key === 'R') {
           this.reload();
         }
@@ -572,11 +587,8 @@ class LightGunGame {
     const scale = displayWidth / logicalW;
     document.documentElement.style.setProperty('--game-scale', scale);
 
-    // Fix internal canvas backing resolution to stable logical resolution
     this.canvas.width = logicalW;
     this.canvas.height = logicalH;
-
-    // Canvas fills the 1280x720 container
     this.canvas.style.width = '100%';
     this.canvas.style.height = '100%';
   }
