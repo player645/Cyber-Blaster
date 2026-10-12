@@ -269,6 +269,18 @@ class LightGunGame {
     this.init();
   }
 
+  // Minimal Reusable 2.5D Projection Helper
+  projectWorldToScreen(worldX, worldY, depth = 1) {
+    const vanishingX = GAME_CONFIG.LOGICAL_WIDTH / 2;
+    const vanishingY = GAME_CONFIG.LOGICAL_HEIGHT * 0.35;
+    const scale = 1 / Math.max(0.1, depth);
+    return {
+      x: vanishingX + (worldX - vanishingX) * scale,
+      y: vanishingY + (worldY - vanishingY) * scale,
+      scale: scale
+    };
+  }
+
   isMobileTouchDevice() {
     const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent);
@@ -650,9 +662,8 @@ class LightGunGame {
     });
 
     window.addEventListener('keydown', (e) => {
-      if (e.repeat) return; // Ignore holding key down
+      if (e.repeat) return;
 
-      // Pause toggle shortcut (P)
       if (e.code === 'KeyP' || e.key === 'p' || e.key === 'P') {
         if (this.gameMode === 'PLAYING' && !this.checkOrientationGate()) {
           this.pauseGame();
@@ -1880,7 +1891,6 @@ class LightGunGame {
       this.updateTargets(timestamp, dt);
       this.updateHUD();
     } else if (this.gameMode === 'PAUSED') {
-      // Keep lastTimestamp updated while paused so dt doesn't jump upon resume
       this.lastTimestamp = timestamp;
     } else if (this.gameMode === 'GAME_OVER_ANIM') {
       this.state.gameOverAnimTimer -= dt;
@@ -1931,18 +1941,47 @@ class LightGunGame {
   }
 
   drawBackground() {
-    this.ctx.fillStyle = '#0f1018';
+    // 2.5D Perspective Rail Shooter Background Foundation
+    this.ctx.fillStyle = '#0a0b10';
     this.ctx.fillRect(0, 0, GAME_CONFIG.LOGICAL_WIDTH, GAME_CONFIG.LOGICAL_HEIGHT);
 
+    const vanishingX = GAME_CONFIG.LOGICAL_WIDTH / 2;
+    const vanishingY = GAME_CONFIG.LOGICAL_HEIGHT * 0.35;
+
+    // Sky grid converging to vanishing point
     this.ctx.strokeStyle = 'rgba(0, 255, 204, 0.04)';
     this.ctx.lineWidth = 1;
-    for (let x = 0; x < GAME_CONFIG.LOGICAL_WIDTH; x += 40) {
+    for (let x = 0; x <= GAME_CONFIG.LOGICAL_WIDTH; x += 80) {
       this.ctx.beginPath();
-      this.ctx.moveTo(x, 0);
+      this.ctx.moveTo(vanishingX, vanishingY);
+      this.ctx.lineTo(x, 0);
+      this.ctx.stroke();
+    }
+
+    // Horizon line
+    this.ctx.strokeStyle = '#00ffcc';
+    this.ctx.lineWidth = 2;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, vanishingY);
+    this.ctx.lineTo(GAME_CONFIG.LOGICAL_WIDTH, vanishingY);
+    this.ctx.stroke();
+
+    // Perspective Floor Grid below horizon
+    this.ctx.strokeStyle = 'rgba(0, 255, 204, 0.12)';
+    this.ctx.lineWidth = 1;
+
+    // Floor converging lines
+    for (let x = -300; x <= GAME_CONFIG.LOGICAL_WIDTH + 300; x += 90) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(vanishingX, vanishingY);
       this.ctx.lineTo(x, GAME_CONFIG.LOGICAL_HEIGHT);
       this.ctx.stroke();
     }
-    for (let y = 0; y < GAME_CONFIG.LOGICAL_HEIGHT; y += 40) {
+
+    // Perspective horizontal grid bands
+    for (let i = 0; i <= 14; i++) {
+      const factor = i / 14;
+      const y = vanishingY + (GAME_CONFIG.LOGICAL_HEIGHT - vanishingY) * (factor * factor);
       this.ctx.beginPath();
       this.ctx.moveTo(0, y);
       this.ctx.lineTo(GAME_CONFIG.LOGICAL_WIDTH, y);
