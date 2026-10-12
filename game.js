@@ -943,9 +943,12 @@ class LightGunGame {
 
     for (let i = this.targets.length - 1; i >= 0; i--) {
       const target = this.targets[i];
-      const dist = Math.hypot(this.crosshair.x - target.x, this.crosshair.y - target.y);
+      const depth = target.depth || 1.0;
+      const projected = this.projectWorldToScreen(target.x, target.y, depth);
+      const apparentRadius = target.radius * projected.scale;
+      const dist = Math.hypot(this.crosshair.x - projected.x, this.crosshair.y - projected.y);
 
-      if (dist <= target.radius) {
+      if (dist <= apparentRadius) {
         if (this.isPointObstructed(this.crosshair.x, this.crosshair.y, 2, 0)) {
           hitObstacle = true;
           this.spawnSparks(this.crosshair.x, this.crosshair.y, '#ff9900');
@@ -1190,6 +1193,8 @@ class LightGunGame {
     const radius = GAME_CONFIG.ENEMY_RADIUS;
 
     [...enemySpecs, ...hostageSpecs].forEach((spec) => {
+      const targetDepth = 0.75 + Math.random() * 0.6;
+
       if (spec.pattern === 'cover' && this.obstacles.length > 0) {
         let availableObs = this.obstacles.filter(o => o.assignedSides.size < 4);
         if (availableObs.length === 0) availableObs = this.obstacles;
@@ -1227,6 +1232,7 @@ class LightGunGame {
           y: hiddenY,
           baseX: hiddenX,
           baseY: hiddenY,
+          depth: targetDepth,
           radius,
           type: spec.type,
           pattern: 'cover',
@@ -1272,6 +1278,7 @@ class LightGunGame {
           y,
           baseX: x,
           baseY: y,
+          depth: targetDepth,
           radius,
           type: spec.type,
           pattern,
@@ -1398,6 +1405,7 @@ class LightGunGame {
       y,
       baseX: x,
       baseY: y,
+      depth: 0.75 + Math.random() * 0.6,
       radius,
       type: 'perk',
       perkType: perkType,
@@ -1941,14 +1949,12 @@ class LightGunGame {
   }
 
   drawBackground() {
-    // 2.5D Perspective Rail Shooter Background Foundation
     this.ctx.fillStyle = '#0a0b10';
     this.ctx.fillRect(0, 0, GAME_CONFIG.LOGICAL_WIDTH, GAME_CONFIG.LOGICAL_HEIGHT);
 
     const vanishingX = GAME_CONFIG.LOGICAL_WIDTH / 2;
     const vanishingY = GAME_CONFIG.LOGICAL_HEIGHT * 0.35;
 
-    // Sky grid converging to vanishing point
     this.ctx.strokeStyle = 'rgba(0, 255, 204, 0.04)';
     this.ctx.lineWidth = 1;
     for (let x = 0; x <= GAME_CONFIG.LOGICAL_WIDTH; x += 80) {
@@ -1958,7 +1964,6 @@ class LightGunGame {
       this.ctx.stroke();
     }
 
-    // Horizon line
     this.ctx.strokeStyle = '#00ffcc';
     this.ctx.lineWidth = 2;
     this.ctx.beginPath();
@@ -1966,11 +1971,9 @@ class LightGunGame {
     this.ctx.lineTo(GAME_CONFIG.LOGICAL_WIDTH, vanishingY);
     this.ctx.stroke();
 
-    // Perspective Floor Grid below horizon
     this.ctx.strokeStyle = 'rgba(0, 255, 204, 0.12)';
     this.ctx.lineWidth = 1;
 
-    // Floor converging lines
     for (let x = -300; x <= GAME_CONFIG.LOGICAL_WIDTH + 300; x += 90) {
       this.ctx.beginPath();
       this.ctx.moveTo(vanishingX, vanishingY);
@@ -1978,7 +1981,6 @@ class LightGunGame {
       this.ctx.stroke();
     }
 
-    // Perspective horizontal grid bands
     for (let i = 0; i <= 14; i++) {
       const factor = i / 14;
       const y = vanishingY + (GAME_CONFIG.LOGICAL_HEIGHT - vanishingY) * (factor * factor);
@@ -2035,8 +2037,23 @@ class LightGunGame {
     const threatProgress = Math.max(0, Math.min(1, 1 - (this.waveThreatTimer / this.waveThreatDuration)));
 
     this.targets.forEach((t) => {
+      const depth = t.depth || 1.0;
+      const projected = this.projectWorldToScreen(t.x, t.y, depth);
+      const screenX = projected.x;
+      const screenY = projected.y;
+      const scale = projected.scale;
+      const apparentRadius = t.radius * scale;
+
       this.ctx.save();
-      this.ctx.translate(t.x, t.y);
+
+      // Draw grounded contact shadow beneath target
+      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      this.ctx.beginPath();
+      this.ctx.ellipse(screenX, screenY + apparentRadius * 0.9, apparentRadius * 0.75, apparentRadius * 0.25, 0, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      this.ctx.translate(screenX, screenY);
+      this.ctx.scale(scale, scale);
 
       if (t.type === 'enemy') {
         this.ctx.fillStyle = this.getEnemyColorByToughness(t.toughness);
