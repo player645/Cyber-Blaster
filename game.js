@@ -184,14 +184,20 @@ class LightGunGame {
     this.waveEl = document.getElementById('wave-val');
     this.reloadPrompt = document.getElementById('reload-prompt');
     this.touchReloadBtn = document.getElementById('touch-reload-btn');
+    this.touchPauseBtn = document.getElementById('touch-pause-btn');
 
     // Screen Overlays
     this.mainMenuScreen = document.getElementById('main-menu-screen');
     this.instructionScreen = document.getElementById('instruction-screen');
     this.leaderboardScreen = document.getElementById('leaderboard-screen');
+    this.pauseScreen = document.getElementById('pause-screen');
     this.nameEntryScreen = document.getElementById('name-entry-screen');
     this.gameOverScreen = document.getElementById('game-over-screen');
     this.orientationOverlay = document.getElementById('orientation-overlay');
+
+    // Pause Menu Buttons
+    this.btnResume = document.getElementById('btn-resume');
+    this.btnEndGame = document.getElementById('btn-end-game');
 
     // Input & Stats Elements
     this.arcadeInput = document.getElementById('arcade-name-input');
@@ -203,7 +209,7 @@ class LightGunGame {
 
     this.sound = new SoundEngine();
 
-    // Mode States: 'MAIN_MENU', 'PLAYING', 'GAME_OVER_ANIM', 'NAME_ENTRY', 'GAME_OVER_SCREEN'
+    // Mode States: 'MAIN_MENU', 'PLAYING', 'PAUSED', 'GAME_OVER_ANIM', 'NAME_ENTRY', 'GAME_OVER_SCREEN'
     this.gameMode = 'MAIN_MENU';
 
     this.state = {
@@ -270,6 +276,25 @@ class LightGunGame {
     return isMobileUA || (isTouch && isSmallScreen);
   }
 
+  requestMobileFullscreen() {
+    if (!this.isMobileTouchDevice()) return;
+    const container = document.documentElement;
+    try {
+      if (container.requestFullscreen) {
+        container.requestFullscreen().catch(() => {});
+      } else if (container.webkitRequestFullscreen) {
+        container.webkitRequestFullscreen();
+      } else if (container.msRequestFullscreen) {
+        container.msRequestFullscreen();
+      }
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Fullscreen request failed or unsupported:', err);
+    }
+  }
+
   checkOrientationGate() {
     if (!this.isMobileTouchDevice()) {
       if (this.orientationOverlay) this.orientationOverlay.classList.add('hidden');
@@ -281,6 +306,7 @@ class LightGunGame {
     if (isPortrait) {
       if (this.orientationOverlay) this.orientationOverlay.classList.remove('hidden');
       if (this.touchReloadBtn) this.touchReloadBtn.classList.remove('visible');
+      if (this.touchPauseBtn) this.touchPauseBtn.classList.remove('visible');
       return true;
     } else {
       if (this.orientationOverlay) this.orientationOverlay.classList.add('hidden');
@@ -406,12 +432,15 @@ class LightGunGame {
   setupUIEvents() {
     document.getElementById('btn-play').addEventListener('click', () => {
       if (this.checkOrientationGate()) return;
+      this.requestMobileFullscreen();
       this.startNewGame();
     });
+
     document.getElementById('btn-instruction').addEventListener('click', () => {
       this.mainMenuScreen.classList.add('hidden');
       this.instructionScreen.classList.remove('hidden');
     });
+
     document.getElementById('btn-instruction-back').addEventListener('click', () => {
       this.instructionScreen.classList.add('hidden');
       this.mainMenuScreen.classList.remove('hidden');
@@ -422,10 +451,29 @@ class LightGunGame {
       this.mainMenuScreen.classList.add('hidden');
       this.leaderboardScreen.classList.remove('hidden');
     });
+
     document.getElementById('btn-leaderboard-back').addEventListener('click', () => {
       this.leaderboardScreen.classList.add('hidden');
       this.mainMenuScreen.classList.remove('hidden');
     });
+
+    // Pause Menu Event Handlers
+    this.btnResume.addEventListener('click', () => {
+      this.resumeGame();
+    });
+
+    this.btnEndGame.addEventListener('click', () => {
+      this.endGameFromPause();
+    });
+
+    if (this.touchPauseBtn) {
+      this.touchPauseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.gameMode === 'PLAYING' && !this.checkOrientationGate()) {
+          this.pauseGame();
+        }
+      });
+    }
 
     this.arcadeInput.addEventListener('input', () => {
       this.arcadeInput.value = this.arcadeInput.value.replace(/[^a-zA-Z]/g, '').toUpperCase();
@@ -443,6 +491,7 @@ class LightGunGame {
 
     document.getElementById('btn-play-again').addEventListener('click', () => {
       if (this.checkOrientationGate()) return;
+      this.requestMobileFullscreen();
       this.gameOverScreen.classList.add('hidden');
       this.startNewGame();
     });
@@ -451,6 +500,49 @@ class LightGunGame {
       this.gameOverScreen.classList.add('hidden');
       this.showMainMenu();
     });
+  }
+
+  pauseGame() {
+    if (this.gameMode !== 'PLAYING') return;
+    this.gameMode = 'PAUSED';
+    if (this.touchReloadBtn) this.touchReloadBtn.classList.remove('visible');
+    if (this.touchPauseBtn) this.touchPauseBtn.classList.remove('visible');
+    this.pauseScreen.classList.remove('hidden');
+  }
+
+  resumeGame() {
+    if (this.gameMode !== 'PAUSED') return;
+    this.pauseScreen.classList.add('hidden');
+    this.gameMode = 'PLAYING';
+    this.lastTimestamp = performance.now(); // Prevent large dt jumps
+    this.updateHUD();
+  }
+
+  endGameFromPause() {
+    if (this.gameMode !== 'PAUSED') return;
+    this.pauseScreen.classList.add('hidden');
+    this.clearPerkTimers();
+    this.state.gameOverTriggered = true;
+    this.latestQualifiedRank = -1;
+    this.latestPlayerName = '';
+
+    if (this.qualifiesForTop10(this.state.score)) {
+      this.gameMode = 'NAME_ENTRY';
+      this.arcadeInput.value = '';
+      this.btnSubmitName.disabled = true;
+      this.hudTop.classList.add('hidden');
+      this.hudBottom.classList.add('hidden');
+      if (this.touchReloadBtn) this.touchReloadBtn.classList.remove('visible');
+      if (this.touchPauseBtn) this.touchPauseBtn.classList.remove('visible');
+      this.nameEntryScreen.classList.remove('hidden');
+      this.arcadeInput.focus();
+    } else {
+      this.hudTop.classList.add('hidden');
+      this.hudBottom.classList.add('hidden');
+      if (this.touchReloadBtn) this.touchReloadBtn.classList.remove('visible');
+      if (this.touchPauseBtn) this.touchPauseBtn.classList.remove('visible');
+      this.showGameOverScreen();
+    }
   }
 
   renderLeaderboardTable() {
@@ -472,6 +564,7 @@ class LightGunGame {
     this.hudTop.classList.add('hidden');
     this.hudBottom.classList.add('hidden');
     if (this.touchReloadBtn) this.touchReloadBtn.classList.remove('visible');
+    if (this.touchPauseBtn) this.touchPauseBtn.classList.remove('visible');
     this.mainMenuScreen.classList.remove('hidden');
     this.clearPerkTimers();
     this.targets = [];
@@ -486,6 +579,7 @@ class LightGunGame {
     this.mainMenuScreen.classList.add('hidden');
     this.instructionScreen.classList.add('hidden');
     this.leaderboardScreen.classList.add('hidden');
+    this.pauseScreen.classList.add('hidden');
     this.nameEntryScreen.classList.add('hidden');
     this.gameOverScreen.classList.add('hidden');
 
@@ -518,8 +612,22 @@ class LightGunGame {
       });
     }
 
+    document.addEventListener('fullscreenchange', () => {
+      setTimeout(() => {
+        this.resizeCanvas();
+        this.checkOrientationGate();
+      }, 100);
+    });
+
+    document.addEventListener('webkitfullscreenchange', () => {
+      setTimeout(() => {
+        this.resizeCanvas();
+        this.checkOrientationGate();
+      }, 100);
+    });
+
     this.canvas.addEventListener('pointerdown', (e) => {
-      if (this.checkOrientationGate()) return;
+      if (this.checkOrientationGate() || this.gameMode === 'PAUSED') return;
       this.mgShotFired = false;
       this.isPointerDown = true;
       this.updateCrosshair(e);
@@ -542,6 +650,19 @@ class LightGunGame {
     });
 
     window.addEventListener('keydown', (e) => {
+      if (e.repeat) return; // Ignore holding key down
+
+      // Pause toggle shortcut (P)
+      if (e.code === 'KeyP' || e.key === 'p' || e.key === 'P') {
+        if (this.gameMode === 'PLAYING' && !this.checkOrientationGate()) {
+          this.pauseGame();
+          return;
+        } else if (this.gameMode === 'PAUSED') {
+          this.resumeGame();
+          return;
+        }
+      }
+
       if (this.gameMode === 'PLAYING' && !this.checkOrientationGate()) {
         if (e.code === 'Space' || e.code === 'KeyR' || e.key === 'r' || e.key === 'R') {
           this.reload();
@@ -1698,8 +1819,10 @@ class LightGunGame {
 
     if (this.isMobileTouchDevice() && !this.checkOrientationGate() && this.gameMode === 'PLAYING') {
       if (this.touchReloadBtn) this.touchReloadBtn.classList.add('visible');
+      if (this.touchPauseBtn) this.touchPauseBtn.classList.add('visible');
     } else {
       if (this.touchReloadBtn) this.touchReloadBtn.classList.remove('visible');
+      if (this.touchPauseBtn) this.touchPauseBtn.classList.remove('visible');
     }
   }
 
@@ -1711,7 +1834,7 @@ class LightGunGame {
     const isPortraitRestricted = this.checkOrientationGate();
 
     this.ctx.save();
-    if (this.screenShake > 0) {
+    if (this.screenShake > 0 && this.gameMode !== 'PAUSED') {
       const dx = (Math.random() - 0.5) * this.screenShake;
       const dy = (Math.random() - 0.5) * this.screenShake;
       this.ctx.translate(dx, dy);
@@ -1756,6 +1879,9 @@ class LightGunGame {
 
       this.updateTargets(timestamp, dt);
       this.updateHUD();
+    } else if (this.gameMode === 'PAUSED') {
+      // Keep lastTimestamp updated while paused so dt doesn't jump upon resume
+      this.lastTimestamp = timestamp;
     } else if (this.gameMode === 'GAME_OVER_ANIM') {
       this.state.gameOverAnimTimer -= dt;
       if (this.state.gameOverAnimTimer <= 0) {
@@ -1765,11 +1891,15 @@ class LightGunGame {
           this.btnSubmitName.disabled = true;
           this.hudTop.classList.add('hidden');
           this.hudBottom.classList.add('hidden');
+          if (this.touchReloadBtn) this.touchReloadBtn.classList.remove('visible');
+          if (this.touchPauseBtn) this.touchPauseBtn.classList.remove('visible');
           this.nameEntryScreen.classList.remove('hidden');
           this.arcadeInput.focus();
         } else {
           this.hudTop.classList.add('hidden');
           this.hudBottom.classList.add('hidden');
+          if (this.touchReloadBtn) this.touchReloadBtn.classList.remove('visible');
+          if (this.touchPauseBtn) this.touchPauseBtn.classList.remove('visible');
           this.showGameOverScreen();
         }
       }
@@ -1782,12 +1912,12 @@ class LightGunGame {
     this.drawFloatingTexts();
     this.drawCrosshair();
 
-    if (this.screenFlash.timer > 0) {
+    if (this.screenFlash.timer > 0 && this.gameMode !== 'PAUSED') {
       this.screenFlash.timer -= dt;
       this.drawScreenFlash();
     }
 
-    if (this.state.roundBannerTimer > 0) {
+    if (this.state.roundBannerTimer > 0 && this.gameMode !== 'PAUSED') {
       this.state.roundBannerTimer -= dt;
       this.drawRoundBanner();
     }
@@ -1992,7 +2122,7 @@ class LightGunGame {
   drawParticles() {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
-      p.update();
+      if (this.gameMode !== 'PAUSED') p.update();
       p.draw(this.ctx);
       if (p.alpha <= 0) {
         this.particles.splice(i, 1);
@@ -2003,7 +2133,7 @@ class LightGunGame {
   drawFloatingTexts() {
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
       const ft = this.floatingTexts[i];
-      ft.update();
+      if (this.gameMode !== 'PAUSED') ft.update();
       ft.draw(this.ctx);
       if (ft.alpha <= 0) {
         this.floatingTexts.splice(i, 1);
