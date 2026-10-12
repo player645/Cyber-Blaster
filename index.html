@@ -135,6 +135,17 @@
       </div>
     </div>
 
+    <!-- Pause Menu Overlay -->
+    <div id="pause-screen" class="overlay-screen hidden">
+      <div class="menu-box modal-box">
+        <h2 class="pause-title">GAME PAUSED</h2>
+        <div class="menu-buttons">
+          <button id="btn-resume" class="menu-btn">RESUME</button>
+          <button id="btn-end-game" class="menu-btn">END GAME</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Arcade 3-Letter Name Entry Screen -->
     <div id="name-entry-screen" class="overlay-screen hidden">
       <div class="menu-box modal-box arcade-box">
@@ -206,6 +217,7 @@
     <canvas id="gameCanvas"></canvas>
 
     <button id="touch-reload-btn" aria-label="Reload Weapon">RELOAD</button>
+    <button id="touch-pause-btn" aria-label="Pause Game">PAUSE</button>
   </div>
 
   <script src="game.js"></script>
