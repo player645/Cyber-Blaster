@@ -269,18 +269,6 @@ class LightGunGame {
     this.init();
   }
 
-  // Minimal Reusable 2.5D Projection Helper
-  projectWorldToScreen(worldX, worldY, depth = 1) {
-    const vanishingX = GAME_CONFIG.LOGICAL_WIDTH / 2;
-    const vanishingY = GAME_CONFIG.LOGICAL_HEIGHT * 0.35;
-    const scale = 1 / Math.max(0.1, depth);
-    return {
-      x: vanishingX + (worldX - vanishingX) * scale,
-      y: vanishingY + (worldY - vanishingY) * scale,
-      scale: scale
-    };
-  }
-
   isMobileTouchDevice() {
     const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent);
@@ -662,8 +650,9 @@ class LightGunGame {
     });
 
     window.addEventListener('keydown', (e) => {
-      if (e.repeat) return;
+      if (e.repeat) return; // Ignore holding key down
 
+      // Pause toggle shortcut (P)
       if (e.code === 'KeyP' || e.key === 'p' || e.key === 'P') {
         if (this.gameMode === 'PLAYING' && !this.checkOrientationGate()) {
           this.pauseGame();
@@ -943,12 +932,9 @@ class LightGunGame {
 
     for (let i = this.targets.length - 1; i >= 0; i--) {
       const target = this.targets[i];
-      const depth = target.depth || 1.0;
-      const projected = this.projectWorldToScreen(target.x, target.y, depth);
-      const apparentRadius = target.radius * projected.scale;
-      const dist = Math.hypot(this.crosshair.x - projected.x, this.crosshair.y - projected.y);
+      const dist = Math.hypot(this.crosshair.x - target.x, this.crosshair.y - target.y);
 
-      if (dist <= apparentRadius) {
+      if (dist <= target.radius) {
         if (this.isPointObstructed(this.crosshair.x, this.crosshair.y, 2, 0)) {
           hitObstacle = true;
           this.spawnSparks(this.crosshair.x, this.crosshair.y, '#ff9900');
@@ -1193,8 +1179,6 @@ class LightGunGame {
     const radius = GAME_CONFIG.ENEMY_RADIUS;
 
     [...enemySpecs, ...hostageSpecs].forEach((spec) => {
-      const targetDepth = 0.75 + Math.random() * 0.6;
-
       if (spec.pattern === 'cover' && this.obstacles.length > 0) {
         let availableObs = this.obstacles.filter(o => o.assignedSides.size < 4);
         if (availableObs.length === 0) availableObs = this.obstacles;
@@ -1232,7 +1216,6 @@ class LightGunGame {
           y: hiddenY,
           baseX: hiddenX,
           baseY: hiddenY,
-          depth: targetDepth,
           radius,
           type: spec.type,
           pattern: 'cover',
@@ -1278,7 +1261,6 @@ class LightGunGame {
           y,
           baseX: x,
           baseY: y,
-          depth: targetDepth,
           radius,
           type: spec.type,
           pattern,
@@ -1405,7 +1387,6 @@ class LightGunGame {
       y,
       baseX: x,
       baseY: y,
-      depth: 0.75 + Math.random() * 0.6,
       radius,
       type: 'perk',
       perkType: perkType,
@@ -1899,6 +1880,7 @@ class LightGunGame {
       this.updateTargets(timestamp, dt);
       this.updateHUD();
     } else if (this.gameMode === 'PAUSED') {
+      // Keep lastTimestamp updated while paused so dt doesn't jump upon resume
       this.lastTimestamp = timestamp;
     } else if (this.gameMode === 'GAME_OVER_ANIM') {
       this.state.gameOverAnimTimer -= dt;
@@ -1949,41 +1931,18 @@ class LightGunGame {
   }
 
   drawBackground() {
-    this.ctx.fillStyle = '#0a0b10';
+    this.ctx.fillStyle = '#0f1018';
     this.ctx.fillRect(0, 0, GAME_CONFIG.LOGICAL_WIDTH, GAME_CONFIG.LOGICAL_HEIGHT);
-
-    const vanishingX = GAME_CONFIG.LOGICAL_WIDTH / 2;
-    const vanishingY = GAME_CONFIG.LOGICAL_HEIGHT * 0.35;
 
     this.ctx.strokeStyle = 'rgba(0, 255, 204, 0.04)';
     this.ctx.lineWidth = 1;
-    for (let x = 0; x <= GAME_CONFIG.LOGICAL_WIDTH; x += 80) {
+    for (let x = 0; x < GAME_CONFIG.LOGICAL_WIDTH; x += 40) {
       this.ctx.beginPath();
-      this.ctx.moveTo(vanishingX, vanishingY);
-      this.ctx.lineTo(x, 0);
-      this.ctx.stroke();
-    }
-
-    this.ctx.strokeStyle = '#00ffcc';
-    this.ctx.lineWidth = 2;
-    this.ctx.beginPath();
-    this.ctx.moveTo(0, vanishingY);
-    this.ctx.lineTo(GAME_CONFIG.LOGICAL_WIDTH, vanishingY);
-    this.ctx.stroke();
-
-    this.ctx.strokeStyle = 'rgba(0, 255, 204, 0.12)';
-    this.ctx.lineWidth = 1;
-
-    for (let x = -300; x <= GAME_CONFIG.LOGICAL_WIDTH + 300; x += 90) {
-      this.ctx.beginPath();
-      this.ctx.moveTo(vanishingX, vanishingY);
+      this.ctx.moveTo(x, 0);
       this.ctx.lineTo(x, GAME_CONFIG.LOGICAL_HEIGHT);
       this.ctx.stroke();
     }
-
-    for (let i = 0; i <= 14; i++) {
-      const factor = i / 14;
-      const y = vanishingY + (GAME_CONFIG.LOGICAL_HEIGHT - vanishingY) * (factor * factor);
+    for (let y = 0; y < GAME_CONFIG.LOGICAL_HEIGHT; y += 40) {
       this.ctx.beginPath();
       this.ctx.moveTo(0, y);
       this.ctx.lineTo(GAME_CONFIG.LOGICAL_WIDTH, y);
@@ -2037,23 +1996,8 @@ class LightGunGame {
     const threatProgress = Math.max(0, Math.min(1, 1 - (this.waveThreatTimer / this.waveThreatDuration)));
 
     this.targets.forEach((t) => {
-      const depth = t.depth || 1.0;
-      const projected = this.projectWorldToScreen(t.x, t.y, depth);
-      const screenX = projected.x;
-      const screenY = projected.y;
-      const scale = projected.scale;
-      const apparentRadius = t.radius * scale;
-
       this.ctx.save();
-
-      // Draw grounded contact shadow beneath target
-      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-      this.ctx.beginPath();
-      this.ctx.ellipse(screenX, screenY + apparentRadius * 0.9, apparentRadius * 0.75, apparentRadius * 0.25, 0, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      this.ctx.translate(screenX, screenY);
-      this.ctx.scale(scale, scale);
+      this.ctx.translate(t.x, t.y);
 
       if (t.type === 'enemy') {
         this.ctx.fillStyle = this.getEnemyColorByToughness(t.toughness);
