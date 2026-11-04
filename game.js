@@ -65,19 +65,53 @@ const GAME_CONFIG = {
     FLOOR_NEAR_Z: -200       // nearest cross-line drawn (in front of the play line, under the HUD)
   },
 
-  // Static elevated platforms (world units). generatePlatforms() picks side slots from these.
+  // Static elevated platforms (world units). A platform has an architecture TYPE (what it is built from)
+  // and comes from a layout PROFILE (an authored template of platforms with ranges). Everything below is
+  // data: generatePlatforms() instantiates and validates it, getPlatformParts() builds the solids.
   PLATFORMS: {
-    COUNT_MIN: 1,
-    COUNT_MAX: 2,
-    WIDTH: 260,               // along X
-    DEPTH: 180,               // along Z
-    HEIGHT_MIN: 100,          // top-surface height above the floor
-    HEIGHT_MAX: 130,
-    INNER_X: 300,             // platforms stay at least this far from the center: keeps the aiming corridor clear
-    ROWS_Z: [150, 215],       // candidate front-edge depths (one per platform)
-    ROW_JITTER: 15,
     SPAWN_CHANCE: 0.3,        // chance an enemy / hostage / perk picks a platform instead of the floor
-    MAX_TARGETS: 2            // per platform
+    MAX_TARGETS: 2,           // default targets per platform (a type can raise it)
+    INNER_X: 300,             // no platform may come closer than this to the center line (aiming corridor)
+    SPAWN_GAP: 40,            // minimum gap between two platform footprints
+    ROOM_MARGIN: 20,          // keeps a platform this far from the back wall
+    SURFACE_Z_MAX: 440,       // deepest Z a target standing on a platform may use (enemies there are still >= 29px in radius)
+    BRACKET_LENGTH: 90,       // wall brackets reach this far in from the wall (must stay outside the walkable floor)
+    BRACKET_DROP: 64,         // ...and drop this far down the wall below the deck
+    BRACKET_THICKNESS: 12,    // plate thickness along Z
+    BRACKET_INSET: 24,        // distance of the first/last bracket from the deck's front/back edge
+    ROD_SIZE: 8,              // suspension rods / chains: square cross-section
+    ROD_INSET: 10,            // rods sit this far in from the deck corners
+    CHAIN_LINK: 22,           // spacing of the chain-link marks drawn on a rod
+    TYPES: {
+      // thickness: deck slab [h - thickness, h]; edgeMargin: extra inset of the walkable area (clearance from
+      // rods); braceSpacing: wall-bracket spacing along Z (0 = exactly two brackets)
+      balcony:   { thickness: 14, edgeMargin: 0,  maxTargets: 2, braceSpacing: 0 },
+      catwalk:   { thickness: 20, edgeMargin: 0,  maxTargets: 3, braceSpacing: 95 },
+      suspended: { thickness: 14, edgeMargin: 16, maxTargets: 2, braceSpacing: 0 }
+    },
+    // Ranges are [min, max] in world units. z = front edge, d = length along Z, h = top-surface elevation.
+    // Wall types use `inner` (distance of the deck's inner edge from the center line; the deck runs from there
+    // to the wall); suspended platforms use `cx` (center offset) and `w` (width). side 'a' = the profile's
+    // primary side (right with probability rightBias), 'b' = the opposite side. `chance` marks a platform optional.
+    // Elevations are chosen so the underside is genuinely open to the camera (see getPlatformProblems).
+    PROFILES: {
+      factory_right_catwalk: { weight: 3, rightBias: 0.7, platforms: [
+        { type: 'catwalk', side: 'a', z: [40, 110], d: [270, 340], h: [210, 235], inner: [360, 420] },
+        { type: 'balcony', side: 'b', z: [130, 230], d: [150, 190], h: [172, 195], inner: [300, 360], chance: 0.5 } ] },
+      suspended_rear_platform: { weight: 2, rightBias: 0.5, platforms: [
+        { type: 'suspended', side: 'a', z: [150, 240], d: [160, 200], h: [182, 210], w: [220, 260], cx: [440, 500] },
+        { type: 'suspended', side: 'b', z: [60, 150], d: [150, 190], h: [192, 215], w: [200, 250], cx: [440, 500], chance: 0.45 } ] },
+      wall_balcony_pair: { weight: 3, rightBias: 0.5, platforms: [
+        { type: 'balcony', side: 'a', z: [90, 260], d: [150, 200], h: [172, 195], inner: [300, 360] },
+        { type: 'balcony', side: 'b', z: [90, 260], d: [150, 200], h: [172, 195], inner: [300, 360] } ] },
+      mixed_elevation: { weight: 2, rightBias: 0.6, platforms: [
+        { type: 'catwalk', side: 'a', z: [60, 120], d: [250, 320], h: [210, 235], inner: [380, 430] },
+        { type: 'suspended', side: 'b', z: [150, 240], d: [160, 190], h: [182, 210], w: [220, 260], cx: [440, 500] } ] },
+      industrial_asymmetric: { weight: 2, rightBias: 0.5, platforms: [
+        { type: 'balcony', side: 'a', z: [240, 290], d: [130, 170], h: [172, 195], inner: [300, 340] },
+        { type: 'balcony', side: 'a', z: [20, 50], d: [125, 150], h: [172, 195], inner: [300, 340], chance: 0.55 },
+        { type: 'suspended', side: 'b', z: [50, 130], d: [150, 190], h: [192, 215], w: [200, 250], cx: [440, 500] } ] }
+    }
   },
 
   // Floor obstacle layout (world units). generateObstaclesForCoverSpecs() enumerates valid
@@ -92,6 +126,14 @@ const GAME_CONFIG = {
     SHADOW_MARGIN: 14,                  // floor shadow extends this far beyond the footprint
     HISTORY_DECAY: 0.7,                 // lane-usage memory across waves
     HISTORY_PENALTY: 1.0                // how strongly recently used lanes are avoided
+  },
+
+  // Fair target visibility: a moving target is not allowed to walk into a spot where (almost) all of
+  // its hit area is hidden behind a solid, because it could not be shot before the threat timer ends.
+  VISIBILITY: {
+    MIN_VISIBLE_FRACTION: 0.25,         // share of the disc (21 sample points) that must be in clear view
+    RECOVER_DELAY: 0.25,                // seconds a target may stay below the minimum before it is moved
+    RECOVER_MAX_DIST: 160               // recovery only searches this far (world px): no cross-room teleports
   }
 };
 
@@ -803,7 +845,8 @@ class LightGunGame {
   getSupportBounds(t) {
     const pl = t.platform;
     if (pl) {
-      return { minX: pl.x + t.radius, maxX: pl.x + pl.w - t.radius, minZ: pl.z + t.radius, maxZ: pl.z + pl.d - t.radius };
+      const S = this.getPlatformSupportSurface(pl, t.radius);
+      return { minX: S.minX, maxX: S.maxX, minZ: S.minZ, maxZ: S.maxZ };
     }
     const area = this.getPlayableArea();
     return { minX: area.minX + t.radius, maxX: area.maxX - t.radius, minZ: 0, maxZ: GAME_CONFIG.PERSPECTIVE.DEPTH_RANGE };
@@ -824,8 +867,119 @@ class LightGunGame {
   // box derives from these fields through projectWorld(): its drawn faces, its silhouette, shot
   // blocking and draw ordering, so they cannot disagree.
 
-  getBoxes() {
-    return [...this.obstacles, ...this.platforms];
+  // THREE SEPARATE QUESTIONS, THREE SEPARATE QUERIES (they must never share one list of platform geometry):
+  //  1. What stops a target walking on the floor?        -> getFloorMovementBlockers() / getOverheadClearanceBlockers()
+  //  2. What blocks a shot (and hides a target)?         -> getShotBlockingParts()
+  //  3. What does an entity assigned to a platform stand on? -> getPlatformSupportSurface()
+
+  // 2. Shot blockers: obstacles (solid boxes) and the physical components of each platform (the thin
+  // deck slab and the wall brackets). A platform's open underside is deliberately NOT part of this list.
+  getShotBlockingParts() {
+    const out = [...this.obstacles];
+    for (const pl of this.platforms) out.push(...this.getPlatformParts(pl));
+    return out;
+  }
+
+  // A platform is {type, x, z, w, d, h, t, side, ...}: h is the elevation of the top walking surface and t the
+  // deck thickness (the deck spans [h - t, h]; everything beneath it is open). Its other parts depend on the
+  // type, all built from the same box / prism solids so drawing, shot blocking, ordering and collision share them:
+  //  - balcony, catwalk: wall-mounted. The deck's outer edge lies exactly on the side wall, with triangular
+  //    brackets fixed to the wall below it (two for a balcony, one per braceSpacing for a long catwalk).
+  //  - suspended: hangs from the ceiling on four vertical rods (chains) that run from the deck's corners up to
+  //    the ceiling plane.
+  // Nothing reaches the floor, so nothing below a deck blocks floor movement.
+  getPlatformParts(pl) {
+    if (!pl._parts) {
+      const C = GAME_CONFIG.PLATFORMS;
+      const type = pl.type || 'balcony';
+      const t = pl.t !== undefined ? pl.t : C.TYPES[type].thickness;
+      const under = pl.h - t;                                           // underside of the deck
+      const deck = { x: pl.x, z: pl.z, w: pl.w, d: pl.d, surfaceHeight: under, h: t, platform: pl, kind: 'deck' };
+      pl._parts = [deck, ...(type === 'suspended' ? this.buildRods(pl) : this.buildBrackets(pl, type, under))];
+    }
+    return pl._parts;
+  }
+
+  // Wall brackets: triangular plates fixed to the wall plane, flush under the deck, evenly spaced along Z.
+  buildBrackets(pl, type, under) {
+    const C = GAME_CONFIG.PLATFORMS;
+    const { vpX } = this.getPerspective();
+    const side = pl.side !== undefined ? pl.side : (pl.x + pl.w / 2 < vpX ? -1 : 1);
+    const wallX = side < 0 ? pl.x : pl.x + pl.w;                      // the wall plane
+    const dir = side < 0 ? 1 : -1;                                    // brackets reach inward from the wall
+    const len = C.BRACKET_LENGTH, drop = C.BRACKET_DROP, th = C.BRACKET_THICKNESS;
+    let poly = [[wallX, under - drop], [wallX + dir * len, under], [wallX, under]];
+    const area2 = (poly[1][0] - poly[0][0]) * (poly[2][1] - poly[0][1]) - (poly[1][1] - poly[0][1]) * (poly[2][0] - poly[0][0]);
+    if (area2 < 0) poly = poly.slice().reverse();                     // counter-clockwise in the x-y plane
+    const x0 = Math.min(wallX, wallX + dir * len);
+    const spacing = C.TYPES[type].braceSpacing;
+    const n = spacing > 0 ? Math.max(2, Math.round(pl.d / spacing)) : 2;
+    const first = pl.z + C.BRACKET_INSET, last = pl.z + pl.d - C.BRACKET_INSET - th;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      out.push({ kind: 'bracket', platform: pl, poly, x: x0, w: len, z: first + (last - first) * i / (n - 1), d: th, surfaceHeight: under - drop, h: drop });
+    }
+    return out;
+  }
+
+  // Suspension rods (chains): thin vertical boxes from the deck's top surface at its four corners up to the
+  // ceiling plane. They never reach the floor.
+  buildRods(pl) {
+    const C = GAME_CONFIG.PLATFORMS;
+    const ceiling = this.getPerspective().roomHeight;
+    const sz = C.ROD_SIZE, ins = C.ROD_INSET;
+    const out = [];
+    for (const x of [pl.x + ins, pl.x + pl.w - ins - sz]) {
+      for (const z of [pl.z + ins, pl.z + pl.d - ins - sz]) {
+        out.push({ kind: 'rod', platform: pl, x, z, w: sz, d: sz, surfaceHeight: pl.h, h: ceiling - pl.h });
+      }
+    }
+    return out;
+  }
+
+  // 3. The support surface of a platform: its elevation and the area a target's center may occupy
+  // (the deck, limited to the playable floor area; the part against the wall is not usable).
+  getPlatformSupportSurface(pl, radius = 0) {
+    const area = this.getPlayableArea();
+    const m = radius + (pl.edgeMargin || 0);            // extra inset keeps targets clear of suspension rods
+    return {
+      height: pl.h,
+      minX: Math.max(pl.x, area.minX) + m,
+      maxX: Math.min(pl.x + pl.w, area.maxX) - m,
+      minZ: pl.z + m,
+      maxZ: Math.min(pl.z + pl.d, GAME_CONFIG.PLATFORMS.SURFACE_Z_MAX) - m
+    };
+  }
+
+  // Screen bounds of a whole platform (all its parts), for placement conflicts.
+  getPlatformBounds(pl) {
+    if (!pl._bounds) {
+      const bs = this.getPlatformParts(pl).map(q => this.getBoxBounds(q));
+      pl._bounds = { minX: Math.min(...bs.map(b => b.minX)), maxX: Math.max(...bs.map(b => b.maxX)), minY: Math.min(...bs.map(b => b.minY)), maxY: Math.max(...bs.map(b => b.maxY)) };
+    }
+    return pl._bounds;
+  }
+
+  // 1a. Footprints that stop a target walking on the floor: solid obstacles, plus any platform part that
+  // actually reaches the floor (a pillar). A deck is above the floor and is never a floor blocker; the
+  // wall brackets stay outside the walkable area (validateLayout checks this).
+  getFloorMovementBlockers() {
+    const out = [...this.obstacles];
+    for (const pl of this.platforms) out.push(...this.getPlatformParts(pl).filter(q => q.reachesFloor));
+    return out;
+  }
+
+  // 1b. Overhead clearance, deliberately separate from horizontal wall collision: an entity whose top is
+  // higher than the underside of a deck cannot fit beneath it. Ordinary NPCs (about 96 tall) fit under
+  // every deck (validateLayout checks the clearance), so this list is empty for them; it applies to
+  // hovering perks, which are taller than the clearance.
+  getOverheadClearanceBlockers(topY = 0) {
+    const out = [];
+    for (const pl of this.platforms) {
+      const deck = this.getPlatformParts(pl)[0];
+      if (topY > deck.surfaceHeight - 2) out.push(deck);
+    }
+    return out;
   }
 
   getBoxCorners(box) {
@@ -838,30 +992,18 @@ class LightGunGame {
     };
   }
 
-  // Convex outline of the projected box = exactly what the camera sees of it (boxes are static,
-  // so it is computed once).
-  getBoxHull(box) {
-    if (!box._hull) {
-      const c = this.getBoxCorners(box);
-      const pts = Object.values(c).map(q => [q.x, q.y]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-      const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-      const lower = [];
-      for (const q of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop(); lower.push(q); }
-      const upper = [];
-      for (const q of pts.slice().reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop(); upper.push(q); }
-      box._hull = lower.slice(0, -1).concat(upper.slice(0, -1));
-    }
-    return box._hull;
+  // Convex hull of 2D points [[x, y], ...] (monotone chain).
+  convexHull2D(points) {
+    const pts = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lower = [];
+    for (const q of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop(); lower.push(q); }
+    const upper = [];
+    for (const q of pts.slice().reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop(); upper.push(q); }
+    return lower.slice(0, -1).concat(upper.slice(0, -1));
   }
 
-  getBoxBounds(box) {
-    const hull = this.getBoxHull(box);
-    const xs = hull.map(q => q[0]), ys = hull.map(q => q[1]);
-    return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
-  }
-
-  isPointInBox(x, y, box) {
-    const hull = this.getBoxHull(box);
+  pointInConvex(hull, x, y) {
     let sign = 0;
     for (let i = 0; i < hull.length; i++) {
       const a = hull[i], b = hull[(i + 1) % hull.length];
@@ -874,8 +1016,39 @@ class LightGunGame {
     return true;
   }
 
+  // Convex outline of the projected box = exactly what the camera sees of it (boxes are static,
+  // so it is computed once).
+  getBoxHull(box) {
+    if (!box._hull) {
+      box._hull = this.convexHull2D(this.getBoxWorldVertices(box).map(v => { const q = this.projectWorld(v.x, v.y, v.z); return [q.x, q.y]; }));
+    }
+    return box._hull;
+  }
+
+  // World vertices of a solid: 8 corners for a box, or the polygon extruded along Z for a bracket (prism).
+  getBoxWorldVertices(box) {
+    if (box.poly) {
+      const out = [];
+      for (const [x, y] of box.poly) for (const z of [box.z, box.z + box.d]) out.push({ x, y, z });
+      return out;
+    }
+    const y0 = box.surfaceHeight || 0, out = [];
+    for (const x of [box.x, box.x + box.w]) for (const y of [y0, y0 + box.h]) for (const z of [box.z, box.z + box.d]) out.push({ x, y, z });
+    return out;
+  }
+
+  getBoxBounds(box) {
+    const hull = this.getBoxHull(box);
+    const xs = hull.map(q => q[0]), ys = hull.map(q => q[1]);
+    return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+  }
+
+  isPointInBox(x, y, box) {
+    return this.pointInConvex(this.getBoxHull(box), x, y);
+  }
+
   isPointOnAnyBox(x, y) {
-    return this.getBoxes().some(b => this.isPointInBox(x, y, b));
+    return this.getShotBlockingParts().some(b => this.isPointInBox(x, y, b));
   }
 
   // Highest point (smallest screen y) of a box's silhouette within a screen x-range.
@@ -907,7 +1080,40 @@ class LightGunGame {
   }
 
   // Does the segment from the camera to p enter the box before reaching p? (slab test)
+  // Exact segment-vs-prism test: clip the segment to the Z slab, then to each edge of the (counter-clockwise)
+  // x-y polygon (Cyrus-Beck). Used for the triangular wall brackets so only their real shape blocks shots.
+  isSegmentBlockedByPrism(p, part) {
+    const c = this.getCamera();
+    const dz = p.z - c.z;
+    let t0 = 0, t1 = 1;
+    if (Math.abs(dz) < 1e-12) {
+      if (c.z < part.z || c.z > part.z + part.d) return false;
+    } else {
+      let a = (part.z - c.z) / dz, b = (part.z + part.d - c.z) / dz;
+      if (a > b) [a, b] = [b, a];
+      t0 = Math.max(t0, a);
+      t1 = Math.min(t1, b);
+      if (t0 > t1) return false;
+    }
+    const dx = p.x - c.x, dy = p.y - c.y, poly = part.poly;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const ex = b[0] - a[0], ey = b[1] - a[1];
+      const f0 = ex * (c.y - a[1]) - ey * (c.x - a[0]);   // >= 0 means inside this edge
+      const fd = ex * dy - ey * dx;
+      if (Math.abs(fd) < 1e-12) {
+        if (f0 < 0) return false;
+      } else {
+        const t = -f0 / fd;
+        if (fd > 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t);
+      }
+      if (t0 > t1) return false;
+    }
+    return t0 < 1 - 1e-6;
+  }
+
   isSegmentBlockedByBox(p, box) {
+    if (box.poly) return this.isSegmentBlockedByPrism(p, box);
     const c = this.getCamera();
     const y0 = box.surfaceHeight || 0;
     const lo = [box.x, y0, box.z], hi = [box.x + box.w, y0 + box.h, box.z + box.d];
@@ -928,7 +1134,7 @@ class LightGunGame {
   }
 
   isWorldPointBlocked(p) {
-    return this.getBoxes().some(b => this.isSegmentBlockedByBox(p, b));
+    return this.getShotBlockingParts().some(b => this.isSegmentBlockedByBox(p, b));
   }
 
   // A shot is blocked when a box stands between the camera and the point under the crosshair on
@@ -948,19 +1154,89 @@ class LightGunGame {
 
   // True if any part of the disc is hidden behind a box (used for spawn visibility).
   isDiscBlocked(x, absY, z, r, surface = 0) {
-    return this.getDiscSamples(x, absY, z, r, surface).some(p => this.isWorldPointBlocked(p));
+    if (this.getDiscSamples(x, absY, z, r, surface).some(p => this.isWorldPointBlocked(p))) return true;
+    // the same 21-point grid the visibility guard uses, at the given radius and slightly inside it (the grids are not
+    // nested, so a thin rod or deck edge could otherwise hide between the points of one grid but not the other)
+    return [1, 0.9].some(k => this.getVisGrid().some(([a, c]) => this.isWorldPointBlocked({ x: x + a * r * k, y: Math.max(absY + c * r * k, surface + 0.5), z })));
   }
 
+  // Exact (not sampled) test: the part of the target's plane hidden by a solid is the camera-projection of
+  // the part of the solid that lies in front of that plane, a convex polygon. The target is (partly) behind
+  // the solid iff its disc intersects that polygon, which is exactly the set of rays isSegmentBlockedByBox
+  // blocks. Sampling could miss a thin sliver (e.g. a platform deck) and draw the target over it.
   isTargetBehindBox(t, box) {
+    const zt = t.z;
+    if (!(box.z < zt)) return false;
+    const cam = this.getCamera();
+    const pts = this.getBoxWorldVertices(box).map((v) => {
+      const z = Math.min(v.z, zt);                      // only the part of the solid in front of the plane hides anything
+      const k = (zt - cam.z) / (z - cam.z);
+      return [cam.x + (v.x - cam.x) * k, cam.y + (v.y - cam.y) * k];
+    });
+    return this.circleTouchesConvex(this.convexHull2D(pts), t.x, (t.surfaceHeight || 0) + t.y, t.radius);
+  }
+
+  // Does the circle (cx, cy, r) overlap the convex polygon (inside it, or closer to an edge than r)?
+  circleTouchesConvex(poly, cx, cy, r) {
+    if (this.pointInConvex(poly, cx, cy)) return true;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const L2 = dx * dx + dy * dy;
+      let u = L2 ? ((cx - a[0]) * dx + (cy - a[1]) * dy) / L2 : 0;
+      u = Math.max(0, Math.min(1, u));
+      if (Math.hypot(cx - (a[0] + u * dx), cy - (a[1] + u * dy)) < r - 1e-9) return true;
+    }
+    return false;
+  }
+
+  // Share of a target's disc that is in clear view from the camera (21 sample points). 1 = fully visible.
+  // The 21 sample offsets (in radii) shared by the visibility guard and the spawn check.
+  getVisGrid() {
+    if (!this._visGrid) {
+      this._visGrid = [];
+      for (const a of [-0.8, -0.4, 0, 0.4, 0.8]) for (const c of [-0.8, -0.4, 0, 0.4, 0.8]) if (a * a + c * c <= 0.81) this._visGrid.push([a, c]);
+    }
+    return this._visGrid;
+  }
+
+  getTargetVisibleFraction(t, x = t.x, z = t.z) {
+    const grid = this.getVisGrid();
     const surface = t.surfaceHeight || 0;
-    return this.getDiscSamples(t.x, surface + t.y, t.z, t.radius, surface).some(p => this.isSegmentBlockedByBox(p, box));
+    let clear = 0;
+    for (const [a, c] of grid) {
+      const p = { x: x + a * t.radius, y: Math.max(surface + t.y + c * t.radius, surface + 0.5), z };
+      if (!this.isWorldPointBlocked(p)) clear++;
+    }
+    return clear / grid.length;
+  }
+
+  // Fallback: move a (nearly) fully hidden ordinary target to the closest nearby spot on its own support
+  // surface where it is clearly visible. Bounded search; never leaves its floor/platform area.
+  recoverVisibility(t) {
+    const V = GAME_CONFIG.VISIBILITY;
+    const b = this.getSupportBounds(t);
+    const top = (t.surfaceHeight || 0) + t.y + t.radius;
+    for (let dist = 20; dist <= V.RECOVER_MAX_DIST; dist += 20) {
+      for (let k = 0; k < 16; k++) {
+        const ang = (k / 16) * Math.PI * 2;
+        const x = Math.max(b.minX, Math.min(b.maxX, t.x + Math.cos(ang) * dist));
+        const z = Math.max(b.minZ, Math.min(b.maxZ, t.z + Math.sin(ang) * dist));
+        if (!t.platform && this.isGroundBlocked(x, z, t.radius, 0, top)) continue;
+        if (this.getTargetVisibleFraction(t, x, z) >= 0.75) {
+          t.x = x;
+          t.z = z;
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   isBoxBehindBox(a, b) {
-    const y0 = a.surfaceHeight || 0;
-    const pts = [];
-    for (const x of [a.x, a.x + a.w]) for (const y of [y0, y0 + a.h]) for (const z of [a.z, a.z + a.d]) pts.push({ x, y, z });
-    pts.push({ x: a.x + a.w / 2, y: y0 + a.h / 2, z: a.z + a.d / 2 }, { x: a.x + a.w / 2, y: y0 + a.h, z: a.z + a.d / 2 }, { x: a.x + a.w / 2, y: y0 + a.h / 2, z: a.z });
+    const pts = this.getBoxWorldVertices(a);
+    const n = pts.length;
+    pts.push({ x: pts.reduce((m, q) => m + q.x, 0) / n, y: pts.reduce((m, q) => m + q.y, 0) / n, z: pts.reduce((m, q) => m + q.z, 0) / n });
     return pts.some(p => this.isSegmentBlockedByBox(p, b));
   }
 
@@ -968,15 +1244,20 @@ class LightGunGame {
   // objects have depth and height, so ordering is decided pairwise with the same line-of-sight test
   // used for shots, then resolved with a topological sort (farthest first among unconstrained items):
   //  - target vs target: farther first (matches hit-test order)
-  //  - target vs box: the box is drawn first unless the target is (partly) behind it; a target
-  //    standing on a platform always draws after it
-  //  - box vs box: the one that is behind the other draws first
+  //  - target vs solid: the solid is drawn first unless the target is (partly) behind it; a target
+  //    standing on a platform always draws after that platform's deck
+  //  - solid vs solid: the one that is behind the other draws first
+  //  - parts of one platform: wall brackets first, then the deck, then suspension rods (farther first within a kind)
+  // A platform is several solids (deck + brackets), so a target under the deck can appear in the open
+  // space, and a target on the deck is never hidden by its own platform.
   // Remaining limitation: a cycle (three objects that each hide part of another) cannot be ordered
   // by any painter's pass; it falls back to the farthest-first key.
   getWorldDrawOrder() {
     const nodes = [];
+    const screens = this.targets.map(t => this.projectTarget(t)); // projected discs, for overlap tests
     this.targets.forEach((t, i) => nodes.push({ target: t, key: t.z, idx: i }));
-    this.platforms.forEach((b, i) => nodes.push({ box: b, kind: 'platform', key: b.z + b.d, idx: 1000 + i }));
+    this.platforms.forEach((pl, i) => this.getPlatformParts(pl).forEach((part, k) =>
+      nodes.push({ box: part, kind: 'part', key: part.z + part.d, idx: 1000 + i * 10 + k })));
     this.obstacles.forEach((b, i) => nodes.push({ box: b, kind: 'obstacle', key: b.z + b.d, idx: 2000 + i }));
     const n = nodes.length;
     const after = nodes.map(() => []);
@@ -987,15 +1268,28 @@ class LightGunGame {
       for (let b = a + 1; b < n; b++) {
         const A = nodes[a], B = nodes[b];
         if (A.target && B.target) {
-          if (A.target.z >= B.target.z) edge(a, b); else edge(b, a);
+          // only overlapping discs constrain each other (a constraint between objects that never overlap
+          // on screen is meaningless and can create cycles with the solids)
+          const pa = screens[a], pb = screens[b];
+          if (Math.hypot(pa.x - pb.x, pa.y - pb.y) < pa.radius + pb.radius) {
+            if (A.target.z >= B.target.z) edge(a, b); else edge(b, a);
+          }
         } else if (A.box && B.box) {
-          const ab = this.isBoxBehindBox(A.box, B.box), ba = this.isBoxBehindBox(B.box, A.box);
-          if (ab && !ba) edge(a, b);
-          else if (ba && !ab) edge(b, a);
+          if (A.box.platform && A.box.platform === B.box.platform) {
+            // brackets hang under the deck (first), rods stand on it (last); the same kind: farther first
+            const rank = { bracket: 0, deck: 1, rod: 2 };
+            if (rank[A.box.kind] !== rank[B.box.kind]) { if (rank[A.box.kind] < rank[B.box.kind]) edge(a, b); else edge(b, a); }
+            else if (A.box.z + A.box.d >= B.box.z + B.box.d) edge(a, b); else edge(b, a);
+          } else {
+            const ab = this.isBoxBehindBox(A.box, B.box), ba = this.isBoxBehindBox(B.box, A.box);
+            if (ab && !ba) edge(a, b);
+            else if (ba && !ab) edge(b, a);
+          }
         } else {
           const ti = A.target ? a : b, bi = A.target ? b : a;
-          const T = nodes[ti].target, box = nodes[bi].box;
-          if (T.platform === box) edge(bi, ti);
+          const T = nodes[ti].target, box = nodes[bi].box, pt = screens[ti];
+          if (!this.circleTouchesConvex(this.getBoxHull(box), pt.x, pt.y, pt.radius)) continue; // no overlap, no constraint
+          if (T.platform && box.platform === T.platform && box.kind === 'deck') edge(bi, ti);
           else if (this.isTargetBehindBox(T, box)) edge(ti, bi);
           else edge(bi, ti);
         }
@@ -1023,39 +1317,126 @@ class LightGunGame {
     return order;
   }
 
-  generatePlatforms(rng = Math.random) {
-    this.platforms = [];
+  // Everything that makes a platform invalid, as a list of problem codes (empty = valid). Shared by
+  // generatePlatforms() and validateLayout(), so the two cannot drift apart.
+  getPlatformProblems(pl, others = []) {
     const C = GAME_CONFIG.PLATFORMS;
+    const P = GAME_CONFIG.PERSPECTIVE;
+    const r = GAME_CONFIG.ENEMY_RADIUS;
     const area = this.getPlayableArea();
-    const { vpX } = this.getPerspective();
-    const shuffle = (arr) => {
-      const a = arr.slice();
-      for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-      return a;
-    };
-    const count = C.COUNT_MIN + Math.floor(rng() * (C.COUNT_MAX - C.COUNT_MIN + 1));
-    const sides = shuffle([-1, 1]);
-    const rows = shuffle(C.ROWS_Z);
+    const { vpX, roomHeight } = this.getPerspective();
+    const half = P.ROOM_HALF_WIDTH;
+    const type = pl.type || 'balcony';
+    const problems = [];
 
-    for (let i = 0; i < count && i < sides.length; i++) {
-      const side = sides[i];
-      const z = rows[i % rows.length] + (rng() * 2 - 1) * C.ROW_JITTER;
-      const h = C.HEIGHT_MIN + rng() * (C.HEIGHT_MAX - C.HEIGHT_MIN);
-      const x = side < 0 ? vpX - C.INNER_X - C.WIDTH : vpX + C.INNER_X;
-      const pl = { x, z, w: C.WIDTH, d: C.DEPTH, h, side, surfaceHeight: 0 };
+    if (pl.x < vpX - half - 1e-9 || pl.x + pl.w > vpX + half + 1e-9 || pl.z < 0 || pl.z + pl.d > P.BACK_WALL_Z - C.ROOM_MARGIN) problems.push('outside the room');
+    const nearest = pl.x > vpX ? pl.x - vpX : (pl.x + pl.w < vpX ? vpX - (pl.x + pl.w) : 0);
+    if (nearest < C.INNER_X - 1e-9) problems.push('central corridor not clear');
 
-      if (pl.x < area.minX || pl.x + pl.w > area.maxX) continue;
-      if (pl.z < 0 || pl.z + pl.d > GAME_CONFIG.PERSPECTIVE.BACK_WALL_Z - 20) continue;
-      if (this.platforms.some(o => !(o.x + o.w + 40 <= pl.x || pl.x + pl.w + 40 <= o.x || o.z + o.d + 40 <= pl.z || pl.z + pl.d + 40 <= o.z))) continue;
-      this.platforms.push(pl);
+    const parts = this.getPlatformParts(pl);
+    const deck = parts[0];
+    if (deck.surfaceHeight < r * 2 + 4) problems.push('not enough clearance under the deck for a floor enemy');
+    // The open underside must really be open to the camera. Looking down from the camera height, a deck hides the
+    // floor beneath it unless the sight line to a floor NPC (top at 2r) passes under the deck's front edge. For the
+    // deepest point under the deck that needs: underside >= camH - (camH - 2r) * (z0 + F) / (zEnd + F) (+ a small margin).
+    // Without this, NPCs would vanish from view as they walk under a deck and the visibility guard would turn them
+    // around at an unmarked line (an "invisible wall").
+    const camH = this.getCamera().y;
+    const zEnd = Math.min(pl.z + pl.d, P.DEPTH_RANGE);
+    const needUnder = camH - (camH - r * 2) * (pl.z + P.FOCAL) / (zEnd + P.FOCAL) + 4;
+    if (deck.surfaceHeight < needUnder) problems.push('deck hides the floor beneath it');
+    if (Math.abs(deck.surfaceHeight + deck.h - pl.h) > 1e-9) problems.push('deck top is not at the platform elevation');
+    const S = this.getPlatformSupportSurface(pl, r);
+    if (!(S.maxX - S.minX >= 20 && S.maxZ - S.minZ >= 20)) problems.push('no usable deck area');
+
+    if (type === 'suspended') {
+      if (pl.h > roomHeight - 120) problems.push('too close to the ceiling for rods');
+      parts.filter(q => q.kind === 'rod').forEach((q) => {
+        if (Math.abs(q.surfaceHeight - pl.h) > 1e-9) problems.push('rod not attached to the deck');
+        if (Math.abs(q.surfaceHeight + q.h - roomHeight) > 1e-9) problems.push('rod does not reach the ceiling');
+        if (q.x < pl.x || q.x + q.w > pl.x + pl.w || q.z < pl.z || q.z + q.d > pl.z + pl.d) problems.push('rod outside the deck footprint');
+      });
+    } else {
+      const wallX = vpX + pl.side * half;
+      if (Math.abs((pl.side < 0 ? pl.x : pl.x + pl.w) - wallX) > 1e-9) problems.push('not mounted on the side wall');
+      parts.filter(q => q.kind === 'bracket').forEach((q) => {
+        if (Math.abs((pl.side < 0 ? q.x : q.x + q.w) - wallX) > 1e-9) problems.push('bracket not fixed to the wall');
+        if (pl.side < 0 ? q.x + q.w > area.minX : q.x < area.maxX) problems.push('bracket reaches into the walkable floor');
+        if (q.z < pl.z || q.z + q.d > pl.z + pl.d) problems.push('bracket outside the deck depth');
+      });
     }
+
+    for (const o of others) {
+      if (!(o.x + o.w + C.SPAWN_GAP <= pl.x || pl.x + pl.w + C.SPAWN_GAP <= o.x || o.z + o.d + C.SPAWN_GAP <= pl.z || pl.z + pl.d + C.SPAWN_GAP <= o.z)) problems.push('overlaps another platform');
+    }
+    return problems;
+  }
+
+  // Instantiate one platform from a profile spec. Ranges are sampled with the given rng.
+  makePlatform(spec, side, profile, rng) {
+    const C = GAME_CONFIG.PLATFORMS;
+    const { vpX } = this.getPerspective();
+    const half = GAME_CONFIG.PERSPECTIVE.ROOM_HALF_WIDTH;
+    const T = C.TYPES[spec.type];
+    const range = (r) => r[0] + rng() * (r[1] - r[0]);
+    const z = range(spec.z), d = range(spec.d), h = range(spec.h);
+    let x, w;
+    if (spec.type === 'suspended') {
+      w = range(spec.w);
+      x = vpX + side * range(spec.cx) - w / 2;
+    } else {
+      // wall-mounted: the deck's outer edge is exactly the side wall and it runs inward to `inner`
+      const inner = range(spec.inner);
+      w = half - inner;
+      x = side < 0 ? vpX - half : vpX + inner;
+    }
+    return { type: spec.type, profile, side, x, z, w, d, h, t: T.thickness, edgeMargin: T.edgeMargin, maxTargets: T.maxTargets, surfaceHeight: 0 };
+  }
+
+  // Pick a layout profile (by weight, or the one named by forceProfile) and instantiate it. Every platform is
+  // validated; an invalid required platform retries the draw, an invalid optional one is skipped, and a
+  // single safe wall balcony is the last resort. `rng` makes generation seedable for repeatable layouts.
+  generatePlatforms(rng = Math.random, forceProfile = null) {
+    const C = GAME_CONFIG.PLATFORMS;
+    const names = Object.keys(C.PROFILES);
+    const total = names.reduce((a, n) => a + C.PROFILES[n].weight, 0);
+    const pickProfile = () => {
+      let r = rng() * total;
+      for (const n of names) { r -= C.PROFILES[n].weight; if (r <= 0) return n; }
+      return names[names.length - 1];
+    };
+
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const name = forceProfile || pickProfile();
+      const prof = C.PROFILES[name];
+      const primary = rng() < prof.rightBias ? 1 : -1;
+      const list = [];
+      let ok = true;
+      for (const spec of prof.platforms) {
+        const optional = spec.chance !== undefined;
+        if (optional && rng() >= spec.chance) continue;
+        const pl = this.makePlatform(spec, spec.side === 'a' ? primary : -primary, name, rng);
+        if (this.getPlatformProblems(pl, list).length === 0) list.push(pl);
+        else if (!optional) { ok = false; break; }
+      }
+      if (ok && list.length) {
+        this.platforms = list;
+        this.platformProfile = name;
+        return;
+      }
+    }
+
+    const fallback = this.makePlatform({ type: 'balcony', z: [150, 150], d: [180, 180], h: [185, 185], inner: [300, 300] }, 1, 'fallback', rng);
+    this.platforms = this.getPlatformProblems(fallback, []).length === 0 ? [fallback] : [];
+    this.platformProfile = 'fallback';
   }
 
   // Random valid spot on a platform's top surface (bounded attempts), or null.
   findPlatformSpawn(pl, radius, localY, minSeparation) {
     for (let a = 0; a < 60; a++) {
-      const x = pl.x + radius + Math.random() * Math.max(1, pl.w - radius * 2);
-      const z = pl.z + radius + Math.random() * Math.max(1, pl.d - radius * 2);
+      const S = this.getPlatformSupportSurface(pl, radius);
+      const x = S.minX + Math.random() * Math.max(1, S.maxX - S.minX);
+      const z = S.minZ + Math.random() * Math.max(1, S.maxZ - S.minZ);
       if (this.isTargetPlacementObstructed(x, z, pl.h + localY, radius, 0, pl)) continue;
       if (this.targets.some(t => t.platform === pl && Math.hypot(x - t.x, z - t.z) < minSeparation)) continue;
       return { x, z };
@@ -1066,7 +1447,7 @@ class LightGunGame {
   pickPlatformForSpawn() {
     const C = GAME_CONFIG.PLATFORMS;
     if (!this.platforms.length || Math.random() >= C.SPAWN_CHANCE) return null;
-    const open = this.platforms.filter(pl => this.targets.filter(t => t.platform === pl).length < C.MAX_TARGETS);
+    const open = this.platforms.filter(pl => this.targets.filter(t => t.platform === pl).length < (pl.maxTargets || C.MAX_TARGETS));
     return open.length ? open[Math.floor(Math.random() * open.length)] : null;
   }
 
@@ -1163,9 +1544,10 @@ class LightGunGame {
   }
 
   // Ground-plane test (world X/Z) against obstacle footprints.
-  isGroundBlocked(x, z, radius = 0, extraBuffer = 0) {
+  // topY = height of the top of the thing being placed; it decides whether a platform deck above blocks it.
+  isGroundBlocked(x, z, radius = 0, extraBuffer = 0, topY = 0) {
     const m = radius + extraBuffer;
-    for (const obs of [...this.obstacles, ...this.platforms]) {
+    for (const obs of [...this.getFloorMovementBlockers(), ...this.getOverheadClearanceBlockers(topY)]) {
       if (
         x + m >= obs.x &&
         x - m <= obs.x + obs.w &&
@@ -1183,7 +1565,7 @@ class LightGunGame {
   // y is the absolute height of the disc center; `platform` is its support (null = floor).
   // Rejects spots touching a footprint or with any part of the disc hidden behind a box.
   isTargetPlacementObstructed(x, z, y, radius, extraBuffer, platform = null) {
-    if (!platform && this.isGroundBlocked(x, z, radius, extraBuffer)) return true;
+    if (!platform && this.isGroundBlocked(x, z, radius, extraBuffer, y + radius)) return true;
     return this.isDiscBlocked(x, y, z, radius * 1.1, platform ? platform.h : 0);
   }
 
@@ -1278,7 +1660,7 @@ class LightGunGame {
       const sepX = obs.x + obs.w + O.PLATFORM_GAP <= pl.x || pl.x + pl.w + O.PLATFORM_GAP <= obs.x;
       const sepZ = obs.z + reserve + O.PLATFORM_GAP <= pl.z || pl.z + pl.d + O.PLATFORM_GAP <= obs.z;
       if (!(sepX || sepZ)) problems.push('platform-footprint');
-      if (overlap(hb, this.getBoxBounds(pl), 10)) problems.push('platform-screen');
+      if (overlap(hb, this.getPlatformBounds(pl), 10)) problems.push('platform-screen');
     }
 
     const slots = obs.slots && obs.slots.length ? obs.slots : this.getCoverSlots(obs);
@@ -1379,11 +1761,7 @@ class LightGunGame {
     const P = GAME_CONFIG.PERSPECTIVE;
     const half = P.ROOM_HALF_WIDTH, { vpX } = this.getPerspective();
     this.platforms.forEach((pl, i) => {
-      if (pl.x < area.minX || pl.x + pl.w > area.maxX || pl.z < 0 || pl.z + pl.d > P.BACK_WALL_Z) problems.push(`platform ${i}: out of bounds`);
-      if (!(pl.x + pl.w <= vpX - GAME_CONFIG.PLATFORMS.INNER_X + 1e-9 || pl.x >= vpX + GAME_CONFIG.PLATFORMS.INNER_X - 1e-9)) problems.push(`platform ${i}: center corridor not clear`);
-      this.platforms.forEach((q, j) => {
-        if (j > i && !(pl.x + pl.w <= q.x || q.x + q.w <= pl.x || pl.z + pl.d <= q.z || q.z + q.d <= pl.z)) problems.push(`platform ${i}/${j}: overlap`);
-      });
+      this.getPlatformProblems(pl, this.platforms.filter(q => q !== pl)).forEach(c => problems.push(`platform ${i}: ${c}`));
     });
     this.obstacles.forEach((o, i) => {
       if (o.x < vpX - half || o.x + o.w > vpX + half || o.z + o.d > P.BACK_WALL_Z) problems.push(`obstacle ${i}: outside the room`);
@@ -1902,18 +2280,26 @@ class LightGunGame {
         z = Math.random() * GAME_CONFIG.PERSPECTIVE.DEPTH_RANGE;
         attempts++;
       } while (this.isTargetPlacementObstructed(x, z, hoverY, radius, GAME_CONFIG.OBSTACLE_BUFFER) && attempts < 150);
+
+      // Crowded scene: relax the buffer, but never place a perk inside or behind a solid. If no valid spot
+      // exists the spawn is skipped and does not use up one of the wave's perk slots.
+      if (this.isTargetPlacementObstructed(x, z, hoverY, radius, 0)) {
+        let retry = 0;
+        do {
+          x = area.minX + radius + Math.random() * Math.max(10, area.width - radius * 2);
+          z = Math.random() * GAME_CONFIG.PERSPECTIVE.DEPTH_RANGE;
+          retry++;
+        } while (this.isTargetPlacementObstructed(x, z, hoverY, radius, 0) && retry < 300);
+        if (this.isTargetPlacementObstructed(x, z, hoverY, radius, 0)) {
+          this.perksSpawnedInWave--;
+          return;
+        }
+      }
     }
 
-    const availablePatterns = this.getAvailablePatternsForRound(this.state.round);
-    let pattern = availablePatterns[Math.floor(Math.random() * availablePatterns.length)];
-    if (pattern === 'cover' || pattern === 'static') pattern = 'horizontal';
-
-    const speedMultiplier = 1 + (this.state.round - 1) * 0.15;
-    const baseSpeed = (2.0 + Math.random() * 1.2) * speedMultiplier;
-    const angle = Math.random() * Math.PI * 2;
-
-    // Perks are hovering orbs, not grounded characters: constant height above the floor,
-    // moving on X/Z like everything else. Their shadow stays on the floor beneath them.
+    // Perks are hovering orbs, not grounded characters: constant height above their support surface and
+    // fixed in world space for their whole lifetime (pattern 'static', no velocity). Their shadow stays
+    // on the surface beneath them.
     this.targets.push({
       x,
       y: hoverY,
@@ -1923,10 +2309,10 @@ class LightGunGame {
       radius,
       type: 'perk',
       perkType: perkType,
-      pattern,
+      pattern: 'static',
       timer: GAME_CONFIG.PERK_LIFETIME,
-      vx: Math.cos(angle) * baseSpeed,
-      vz: Math.sin(angle) * baseSpeed
+      vx: 0,
+      vz: 0
     });
   }
 
@@ -2191,9 +2577,10 @@ class LightGunGame {
         }
       }
 
-      // Obstacle and platform footprints live on the same X/Z plane as floor targets.
+      // Obstacle footprints (and any floor-reaching support) live on the same X/Z plane as floor targets;
+      // a deck overhead is NOT a wall (see getOverheadClearanceBlockers for the one deliberate exception).
       // A target standing on a platform is bounded by that platform instead (see getSupportBounds).
-      for (const obs of (t.platform ? [] : [...this.obstacles, ...this.platforms])) {
+      for (const obs of (t.platform ? [] : [...this.getFloorMovementBlockers(), ...this.getOverheadClearanceBlockers((t.surfaceHeight || 0) + t.y + t.radius)])) {
         const expLeft = obs.x - t.radius;
         const expRight = obs.x + obs.w + t.radius;
         const expTop = obs.z - t.radius;               // near face (toward the camera)
@@ -2228,8 +2615,24 @@ class LightGunGame {
         }
       }
 
-      t.x = Math.max(minBoundX, Math.min(maxBoundX, nextX));
-      t.z = Math.max(minBoundZ, Math.min(maxBoundZ, nextZ));
+      let finalX = Math.max(minBoundX, Math.min(maxBoundX, nextX));
+      let finalZ = Math.max(minBoundZ, Math.min(maxBoundZ, nextZ));
+
+      // Fair visibility: do not step into a spot where the target is (almost) completely hidden behind a
+      // solid. Try sliding along one axis, otherwise stay put and reverse; a target that is already
+      // poorly visible may still move if the step improves its visibility (so it can never freeze).
+      if (finalX !== t.x || finalZ !== t.z) {
+        const minVis = GAME_CONFIG.VISIBILITY.MIN_VISIBLE_FRACTION;
+        const cur = this.getTargetVisibleFraction(t);
+        const ok = (x, z) => { const f = this.getTargetVisibleFraction(t, x, z); return f >= minVis || f > cur + 1e-6; };
+        if (!ok(finalX, finalZ)) {
+          if (finalZ !== t.z && ok(finalX, t.z)) { finalZ = t.z; t.vz = -t.vz; }
+          else if (finalX !== t.x && ok(t.x, finalZ)) { finalX = t.x; t.vx = -t.vx; }
+          else { finalX = t.x; finalZ = t.z; t.vx = -t.vx; t.vz = -t.vz; }
+        }
+      }
+      t.x = finalX;
+      t.z = finalZ;
     }
 
     this.resolveEnemyCollisions();
@@ -2241,6 +2644,18 @@ class LightGunGame {
       const b = this.getSupportBounds(t);
       t.x = Math.max(b.minX, Math.min(b.maxX, t.x));
       t.z = Math.max(b.minZ, Math.min(b.maxZ, t.z));
+
+      // Defensive recovery (intentional cover targets are skipped above): if separation pushes or any other
+      // edge case leaves an ordinary target nearly fully hidden, move it to the closest visible spot.
+      if (this.getTargetVisibleFraction(t) < GAME_CONFIG.VISIBILITY.MIN_VISIBLE_FRACTION) {
+        t.hiddenFor = (t.hiddenFor || 0) + dt;
+        if (t.hiddenFor >= GAME_CONFIG.VISIBILITY.RECOVER_DELAY) {
+          this.recoverVisibility(t);
+          t.hiddenFor = 0;
+        }
+      } else {
+        t.hiddenFor = 0;
+      }
     }
   }
 
@@ -2603,17 +3018,39 @@ class LightGunGame {
     ctx.restore();
   }
 
+  // Floor shadows are decals on the floor, so they are drawn before everything that stands on it:
+  // obstacles cast a soft shadow slightly larger than their footprint; a platform deck casts one on the
+  // floor beneath it, which is what makes the open space under it read as open.
+  drawFloorShadows() {
+    const ctx = this.ctx;
+    const poly = (x0, z0, x1, z1, alpha) => {
+      const pts = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(([x, z]) => this.projectWorld(x, 0, z));
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      pts.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));
+      ctx.closePath();
+      ctx.fill();
+    };
+    const m = GAME_CONFIG.OBSTACLES.SHADOW_MARGIN;
+    ctx.save();
+    ctx.fillStyle = '#000000';
+    this.obstacles.forEach(o => poly(o.x - m, o.z - m, o.x + o.w + m, o.z + o.d + m, 0.3));
+    this.platforms.forEach(pl => poly(pl.x, pl.z, pl.x + pl.w, pl.z + pl.d, 0.22));
+    ctx.restore();
+  }
+
   // Everything in the room is drawn in one pass in the order from getWorldDrawOrder().
   drawWorldEntities() {
+    this.drawFloorShadows();
     this.getWorldDrawOrder().forEach((n) => {
       if (n.target) this.drawTargets([n.target]);
       else if (n.kind === 'obstacle') this.drawObstacles([n.box]);
-      else this.drawPlatform(n.box);
+      else this.drawPlatformPart(n.box);
     });
   }
 
-  // One solid-box renderer for obstacles and platforms: the visible faces (front, top, and the inner
-  // side face) are polygons of projected world corners. `style` only picks colors.
+  // One solid-box renderer for obstacles and platform parts: the visible faces (front, top, and the
+  // inner side face) are polygons of projected world corners. `style` only picks colors.
   drawBox(box, style) {
     const ctx = this.ctx;
     const c = this.getBoxCorners(box);
@@ -2629,25 +3066,12 @@ class LightGunGame {
     };
 
     ctx.save();
-    if (style.shadow) {
-      // soft shadow following the box's real floor footprint (slightly enlarged)
-      const m = GAME_CONFIG.OBSTACLES.SHADOW_MARGIN;
-      const pts = [[box.x - m, box.z - m], [box.x + box.w + m, box.z - m], [box.x + box.w + m, box.z + box.d + m], [box.x - m, box.z + box.d + m]]
-        .map(([x, z]) => this.projectWorld(x, yb, z));
-      ctx.globalAlpha = 0.3;
-      ctx.fillStyle = '#000000';
-      ctx.beginPath();
-      pts.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));
-      ctx.closePath();
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
     ctx.strokeStyle = style.stroke;
     ctx.lineWidth = style.lineWidth;
     ctx.lineJoin = 'round';
     if (box.x + box.w < vpX) face([c.fbr, c.bbr, c.btr, c.ftr], style.side);      // inner side face (right)
     else if (box.x > vpX) face([c.fbl, c.bbl, c.btl, c.ftl], style.side);          // inner side face (left)
-    if (yt < floorY - vpY) face([c.ftl, c.ftr, c.btr, c.btl], style.top);          // top face (camera is above it)
+    if (!style.noTop && yt < floorY - vpY) face([c.ftl, c.ftr, c.btr, c.btl], style.top); // top face (camera is above it)
     face([c.fbl, c.fbr, c.ftr, c.ftl], style.front);                               // front face
     if (style.diagonal) {
       ctx.beginPath();
@@ -2658,8 +3082,92 @@ class LightGunGame {
     ctx.restore();
   }
 
+  // One platform part: the thin deck (neon top surface + fascia), a wall bracket or a suspension rod (chain).
+  drawPlatformPart(part) {
+    if (part.kind === 'bracket') {
+      this.drawBracket(part);
+    } else if (part.kind === 'rod') {
+      this.drawChain(part);
+    } else {
+      this.drawBox(part, { front: '#1e2638', top: '#2a364f', side: '#151b2b', stroke: 'rgba(0, 255, 204, 0.55)', lineWidth: 1.5 });
+      if (part.platform && part.platform.type === 'catwalk') this.drawCatwalkRibs(part);
+    }
+  }
+
+  // Restrained industrial detail for a long catwalk: vertical seams on its visible inner fascia, at the
+  // bracket spacing, drawn between projected world points on the deck's inner side face.
+  drawCatwalkRibs(deck) {
+    const pl = deck.platform;
+    const xIn = pl.side > 0 ? pl.x : pl.x + pl.w;
+    const step = GAME_CONFIG.PLATFORMS.TYPES.catwalk.braceSpacing;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let z = pl.z + step; z < pl.z + pl.d - 10; z += step) {
+      const a = this.projectWorld(xIn, deck.surfaceHeight, z), b = this.projectWorld(xIn, deck.surfaceHeight + deck.h, z);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // A suspension rod drawn as a chain: a thin box from the deck's top up to the ceiling with link marks
+  // every CHAIN_LINK world units, all from projected world points.
+  drawChain(rod) {
+    this.drawBox(rod, { front: '#243049', top: '#243049', side: '#18203a', stroke: 'rgba(0, 255, 204, 0.6)', lineWidth: 1.2 });
+    const ctx = this.ctx;
+    const link = GAME_CONFIG.PLATFORMS.CHAIN_LINK;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.75)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let y = rod.surfaceHeight + link; y < rod.surfaceHeight + rod.h; y += link) {
+      const a = this.projectWorld(rod.x, y, rod.z), b = this.projectWorld(rod.x + rod.w, y, rod.z);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // A triangular wall bracket: the front plate plus any extruded edge that faces the camera, all from
+  // projected world vertices (same projection as everything else).
+  drawBracket(part) {
+    const ctx = this.ctx;
+    const cam = this.getCamera();
+    const poly = part.poly, z0 = part.z, z1 = part.z + part.d;
+    const P0 = poly.map(([x, y]) => this.projectWorld(x, y, z0));
+    const P1 = poly.map(([x, y]) => this.projectWorld(x, y, z1));
+    const fill = (pts, color) => {
+      ctx.beginPath();
+      pts.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.stroke();
+    };
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < poly.length; i++) {
+      const j = (i + 1) % poly.length;
+      const ex = poly[j][0] - poly[i][0], ey = poly[j][1] - poly[i][1];
+      const mx = (poly[i][0] + poly[j][0]) / 2, my = (poly[i][1] + poly[j][1]) / 2;
+      if (ey * (cam.x - mx) - ex * (cam.y - my) > 0) fill([P0[i], P0[j], P1[j], P1[i]], '#11172a'); // edge faces the camera
+    }
+    fill(P0, '#171e2e');                                                                            // front plate
+    ctx.restore();
+  }
+
+  // Whole platform in a valid painter order (brackets, then the deck, then rods). The room draws parts
+  // individually through getWorldDrawOrder(); this is the standalone form.
   drawPlatform(pl) {
-    this.drawBox(pl, { front: '#1e2638', top: '#2a364f', side: '#151b2b', stroke: 'rgba(0, 255, 204, 0.55)', lineWidth: 1.5 });
+    const rank = { bracket: 0, deck: 1, rod: 2 };
+    this.getPlatformParts(pl).slice().sort((a, b) => (rank[a.kind] - rank[b.kind]) || ((b.z + b.d) - (a.z + a.d))).forEach(q => this.drawPlatformPart(q));
   }
 
   // Contact shadow anchored on the target's support surface (floor or platform top) directly below it.
@@ -2683,7 +3191,7 @@ class LightGunGame {
   // Obstacles keep their original look (dark fill, bright neon edge, diagonal) but are now solids.
   drawObstacles(list = this.obstacles) {
     list.forEach((o) => {
-      this.drawBox(o, { front: '#1e2638', top: '#2b3750', side: '#161d2d', stroke: '#00ffcc', lineWidth: 2, diagonal: true, shadow: true });
+      this.drawBox(o, { front: '#1e2638', top: '#2b3750', side: '#161d2d', stroke: '#00ffcc', lineWidth: 2, diagonal: true });
     });
   }
 
@@ -2891,26 +3399,29 @@ class LightGunGame {
     this.ctx.restore();
   }
 
+  // Sized in logical canvas pixels (the canvas is scaled to the screen as a whole). The font used to be assigned
+  // to `this.font` instead of `this.ctx.font`, so the text always rendered at the 10px canvas default.
   drawRoundBanner() {
-    this.ctx.save();
-    const boxWidth = 240;
-    const boxHeight = 50;
+    const ctx = this.ctx;
+    ctx.save();
+    const boxWidth = 380;
+    const boxHeight = 80;
     const boxX = (GAME_CONFIG.LOGICAL_WIDTH - boxWidth) / 2;
     const boxY = GAME_CONFIG.HUD_HEIGHT + 20;
 
-    this.ctx.fillStyle = 'rgba(15, 16, 24, 0.9)';
-    this.ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+    ctx.fillStyle = 'rgba(15, 16, 24, 0.92)';
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
 
-    this.ctx.strokeStyle = '#00ffcc';
-    this.ctx.lineWidth = 2;
-    this.ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
 
-    this.ctx.fillStyle = '#00ffcc';
-    this.font = 'bold 1.4rem sans-serif';
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
-    this.ctx.fillText(`ROUND ${this.state.round}`, GAME_CONFIG.LOGICAL_WIDTH / 2, boxY + boxHeight / 2);
-    this.ctx.restore();
+    ctx.fillStyle = '#00ffcc';
+    ctx.font = 'bold 38px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`ROUND ${this.state.round}`, GAME_CONFIG.LOGICAL_WIDTH / 2, boxY + boxHeight / 2 + 2);
+    ctx.restore();
   }
 
   drawGameOverBanner() {
